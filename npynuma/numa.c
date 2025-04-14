@@ -5,9 +5,11 @@
 
 typedef struct {
     int node;
+    // global dict[adress, tuple[node, size]] storing node and address
     PyObject *ptr_dict;
 } NumaCtx;
 
+// curret global context
 static NumaCtx ctx = {0, NULL};
 
 static void* numa_malloc_(void *ctx, size_t size) {
@@ -17,6 +19,7 @@ static void* numa_malloc_(void *ctx, size_t size) {
         nctx->ptr_dict = PyDict_New();
     }
     
+    // store node and address
     PyDict_SetItem(nctx->ptr_dict, PyLong_FromVoidPtr(ptr), PyTuple_Pack(2, PyLong_FromLong(nctx->node), PyLong_FromLong(size)));
     if (!ptr) return NULL;
     return ptr;
