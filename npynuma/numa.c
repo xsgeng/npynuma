@@ -15,35 +15,187 @@ static NumaCtx ctx = {0, NULL};
 static void* numa_malloc_(void *ctx, size_t size) {
     NumaCtx *nctx = (NumaCtx*)ctx;
     void *ptr = numa_alloc_onnode(size, nctx->node);
+    if (!ptr) return NULL;
+
     if (!nctx->ptr_dict) {
         nctx->ptr_dict = PyDict_New();
+        if (!nctx->ptr_dict) {
+            numa_free(ptr, size);
+            return NULL;
+        }
     }
-    
-    // store node and address
-    PyDict_SetItem(nctx->ptr_dict, PyLong_FromVoidPtr(ptr), PyTuple_Pack(2, PyLong_FromLong(nctx->node), PyLong_FromLong(size)));
-    if (!ptr) return NULL;
+
+    PyObject *key = PyLong_FromVoidPtr(ptr);
+    if (!key) {
+        numa_free(ptr, size);
+        return NULL;
+    }
+
+    PyObject *node_obj = PyLong_FromLong(nctx->node);
+    PyObject *size_obj = PyLong_FromLong(size);
+    if (!node_obj || !size_obj) {
+        if (node_obj) Py_DECREF(node_obj);
+        if (size_obj) Py_DECREF(size_obj);
+        Py_DECREF(key);
+        numa_free(ptr, size);
+        return NULL;
+    }
+
+    PyObject *tuple = PyTuple_Pack(2, node_obj, size_obj);
+    Py_DECREF(node_obj);
+    Py_DECREF(size_obj);
+    if (!tuple) {
+        Py_DECREF(key);
+        numa_free(ptr, size);
+        return NULL;
+    }
+
+    if (PyDict_SetItem(nctx->ptr_dict, key, tuple) == -1) {
+        Py_DECREF(key);
+        Py_DECREF(tuple);
+        numa_free(ptr, size);
+        return NULL;
+    }
+
+    Py_DECREF(key);
+    Py_DECREF(tuple);
     return ptr;
 }
 
 static void* numa_calloc_(void *ctx, size_t nelem, size_t elsize) {
     NumaCtx *nctx = (NumaCtx *)ctx;
-    void *ptr = numa_alloc_onnode(nelem * elsize, nctx->node);
+    size_t size = nelem * elsize;
+    void *ptr = numa_alloc_onnode(size, nctx->node);
+    if (!ptr) return NULL;
+
+    if (!nctx->ptr_dict) {
+        nctx->ptr_dict = PyDict_New();
+        if (!nctx->ptr_dict) {
+            numa_free(ptr, size);
+            return NULL;
+        }
+    }
+
+    PyObject *key = PyLong_FromVoidPtr(ptr);
+    if (!key) {
+        numa_free(ptr, size);
+        return NULL;
+    }
+
+    PyObject *node_obj = PyLong_FromLong(nctx->node);
+    PyObject *size_obj = PyLong_FromLong(size);
+    if (!node_obj || !size_obj) {
+        if (node_obj) Py_DECREF(node_obj);
+        if (size_obj) Py_DECREF(size_obj);
+        Py_DECREF(key);
+        numa_free(ptr, size);
+        return NULL;
+    }
+
+    PyObject *tuple = PyTuple_Pack(2, node_obj, size_obj);
+    Py_DECREF(node_obj);
+    Py_DECREF(size_obj);
+    if (!tuple) {
+        Py_DECREF(key);
+        numa_free(ptr, size);
+        return NULL;
+    }
+
+    if (PyDict_SetItem(nctx->ptr_dict, key, tuple) == -1) {
+        Py_DECREF(key);
+        Py_DECREF(tuple);
+        numa_free(ptr, size);
+        return NULL;
+    }
+
+    Py_DECREF(key);
+    Py_DECREF(tuple);
     return ptr;
 }
 
 static void numa_free_(void *ctx, void *ptr, size_t size) {
+    NumaCtx *nctx = (NumaCtx *)ctx;
+    if (nctx->ptr_dict) {
+        PyObject *key = PyLong_FromVoidPtr(ptr);
+        if (key) {
+            PyDict_DelItem(nctx->ptr_dict, key);
+            Py_DECREF(key);
+        }
+    }
     numa_free(ptr, size);
 }
 
 static void* numa_realloc_(void *ctx, void *ptr, size_t new_size) {
     NumaCtx *nctx = (NumaCtx *)ctx;
-
-    size_t old_size = PyLong_AsSize_t(PyTuple_GetItem(PyDict_GetItem(nctx->ptr_dict, PyLong_FromVoidPtr(ptr)), 1));
-    int node = PyLong_AsLong(PyTuple_GetItem(PyDict_GetItem(nctx->ptr_dict, PyLong_FromVoidPtr(ptr)), 0));
-    PyDict_DelItem(nctx->ptr_dict, PyLong_FromVoidPtr(ptr));
+    
+    PyObject *key = PyLong_FromVoidPtr(ptr);
+    if (!key) return NULL;
+    
+    PyObject *entry = PyDict_GetItem(nctx->ptr_dict, key);
+    if (!entry) {
+        Py_DECREF(key);
+        PyErr_SetString(PyExc_RuntimeError, "Realloc on untracked pointer");
+        return NULL;
+    }
+    
+    PyObject *old_size_obj = PyTuple_GetItem(entry, 1);
+    PyObject *node_obj = PyTuple_GetItem(entry, 0);
+    if (!old_size_obj || !node_obj) {
+        Py_DECREF(key);
+        return NULL;
+    }
+    
+    size_t old_size = PyLong_AsSize_t(old_size_obj);
+    int node = PyLong_AsLong(node_obj);
+    if ((old_size == (size_t)-1 || node == -1) && PyErr_Occurred()) {
+        Py_DECREF(key);
+        return NULL;
+    }
+    
+    if (PyDict_DelItem(nctx->ptr_dict, key) == -1) {
+        Py_DECREF(key);
+        return NULL;
+    }
+    Py_DECREF(key);
+    
     void *ptr_new = numa_realloc(ptr, old_size, new_size);
-    // update ptr
-    PyDict_SetItem(nctx->ptr_dict, PyLong_FromVoidPtr(ptr_new), PyTuple_Pack(2, PyLong_FromLong(node), PyLong_FromLong(new_size)));
+    if (!ptr_new) return NULL;
+    
+    // Create new entry
+    PyObject *new_key = PyLong_FromVoidPtr(ptr_new);
+    if (!new_key) {
+        numa_free(ptr_new, new_size);
+        return NULL;
+    }
+    
+    PyObject *new_node_obj = PyLong_FromLong(node);
+    PyObject *new_size_obj = PyLong_FromLong(new_size);
+    if (!new_node_obj || !new_size_obj) {
+        if (new_node_obj) Py_DECREF(new_node_obj);
+        if (new_size_obj) Py_DECREF(new_size_obj);
+        Py_DECREF(new_key);
+        numa_free(ptr_new, new_size);
+        return NULL;
+    }
+    
+    PyObject *new_tuple = PyTuple_Pack(2, new_node_obj, new_size_obj);
+    Py_DECREF(new_node_obj);
+    Py_DECREF(new_size_obj);
+    if (!new_tuple) {
+        Py_DECREF(new_key);
+        numa_free(ptr_new, new_size);
+        return NULL;
+    }
+    
+    if (PyDict_SetItem(nctx->ptr_dict, new_key, new_tuple) == -1) {
+        Py_DECREF(new_key);
+        Py_DECREF(new_tuple);
+        numa_free(ptr_new, new_size);
+        return NULL;
+    }
+    
+    Py_DECREF(new_key);
+    Py_DECREF(new_tuple);
     return ptr_new;
 }
 
@@ -65,6 +217,10 @@ static PyObject* set_numa_policy(PyObject *self, PyObject *args) {
 
     if (!ctx.ptr_dict) {
         ctx.ptr_dict = PyDict_New();
+        if (!ctx.ptr_dict) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to create ptr_dict");
+            return NULL;
+        }
     }
 
     if (numa_available() < 0) {
@@ -75,6 +231,10 @@ static PyObject* set_numa_policy(PyObject *self, PyObject *args) {
     ctx.node = node;
 
     PyObject *capsule = PyCapsule_New(&handler, "mem_handler", NULL);
+    if (!capsule) {
+        return NULL;
+    }
+    
     PyObject *old = PyDataMem_SetHandler(capsule);
     Py_DECREF(capsule);
     return old;
@@ -120,6 +280,8 @@ static struct PyModuleDef numa_module = {
 };
 
 PyMODINIT_FUNC PyInit_numa(void) {
-    import_array();
+    if (import_array() < 0) {
+        return NULL;
+    }
     return PyModule_Create(&numa_module);
 }
