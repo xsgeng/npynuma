@@ -65,51 +65,9 @@ static void* numa_malloc_(void *ctx, size_t size) {
 static void* numa_calloc_(void *ctx, size_t nelem, size_t elsize) {
     NumaCtx *nctx = (NumaCtx *)ctx;
     size_t size = nelem * elsize;
-    void *ptr = numa_alloc_onnode(size, nctx->node);
-    if (!ptr) return NULL;
+    
+    void *ptr = numa_malloc_(ctx, size);
 
-    if (!nctx->ptr_dict) {
-        nctx->ptr_dict = PyDict_New();
-        if (!nctx->ptr_dict) {
-            numa_free(ptr, size);
-            return NULL;
-        }
-    }
-
-    PyObject *key = PyLong_FromVoidPtr(ptr);
-    if (!key) {
-        numa_free(ptr, size);
-        return NULL;
-    }
-
-    PyObject *node_obj = PyLong_FromLong(nctx->node);
-    PyObject *size_obj = PyLong_FromLong(size);
-    if (!node_obj || !size_obj) {
-        if (node_obj) Py_DECREF(node_obj);
-        if (size_obj) Py_DECREF(size_obj);
-        Py_DECREF(key);
-        numa_free(ptr, size);
-        return NULL;
-    }
-
-    PyObject *tuple = PyTuple_Pack(2, node_obj, size_obj);
-    Py_DECREF(node_obj);
-    Py_DECREF(size_obj);
-    if (!tuple) {
-        Py_DECREF(key);
-        numa_free(ptr, size);
-        return NULL;
-    }
-
-    if (PyDict_SetItem(nctx->ptr_dict, key, tuple) == -1) {
-        Py_DECREF(key);
-        Py_DECREF(tuple);
-        numa_free(ptr, size);
-        return NULL;
-    }
-
-    Py_DECREF(key);
-    Py_DECREF(tuple);
     return ptr;
 }
 
