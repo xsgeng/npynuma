@@ -10,7 +10,11 @@ sudo apt install libnuma-dev
 sudo dnf install numactl-devel
 
 # Python package
-pip install npynuma
+git clone https://github.com/xsgeng/npynuma
+cd npynuma
+pip install .
+
+pip install npynuma # not yet
 ```
 
 ## Quick Start
