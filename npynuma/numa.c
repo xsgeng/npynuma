@@ -66,6 +66,7 @@ static void* numa_calloc_(void *ctx, size_t nelem, size_t elsize) {
     NumaCtx *nctx = (NumaCtx *)ctx;
     size_t size = nelem * elsize;
     
+    // numa_alloc_onnode initializes memory to zero on my system.
     void *ptr = numa_malloc_(ctx, size);
 
     return ptr;
