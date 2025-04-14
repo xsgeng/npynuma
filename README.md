@@ -29,3 +29,10 @@ with NumaPolicy(node=0):
 ## Notes
 - Requires Linux NUMA system (`numactl` installed)
 - Node numbers must exist on your system
+
+## Thread Safety
+⚠️ **Not thread-safe** - The NUMA policy context is global to the process. 
+Avoid using `NumaPolicy` contexts concurrently in:
+- Multithreaded applications
+- Async frameworks
+- Any parallel code sharing NumPy allocations
