@@ -63,7 +63,6 @@ static void* numa_malloc_(void *ctx, size_t size) {
 }
 
 static void* numa_calloc_(void *ctx, size_t nelem, size_t elsize) {
-    NumaCtx *nctx = (NumaCtx *)ctx;
     size_t size = nelem * elsize;
     
     // numa_alloc_onnode initializes memory to zero on my system.
@@ -239,8 +238,6 @@ static struct PyModuleDef numa_module = {
 };
 
 PyMODINIT_FUNC PyInit_numa(void) {
-    if (import_array() < 0) {
-        return NULL;
-    }
+    import_array()
     return PyModule_Create(&numa_module);
 }
