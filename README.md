@@ -9,12 +9,8 @@ sudo apt install libnuma-dev
 # Fedora/CentOS
 sudo dnf install numactl-devel
 
-# Python package
-git clone https://github.com/xsgeng/npynuma
-cd npynuma
-pip install .
-
-pip install npynuma # not yet
+# pypi
+pip install npynuma
 ```
 
 ## Quick Start
